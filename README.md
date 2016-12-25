@@ -1,61 +1,47 @@
-# Heroku buildpack for OpenCV
+# buildpack-opencv
 
-Steve Marschner, February 2016
-
-This buildpack provides a basic installation of OpenCV that can be used to compile C++ code 
-in later buildpacks and run it in the application.  In particular, it is designed to support
-C++ addons compiled by the standard Node.js buildpack.
-
-The buildpack works by unpacking an image of OpenCV that is stored on S3, and setting up the 
-required environment variables for it to be used by later buildpacks and at run time.
-
-## Creating the OpenCV image
-
-The image is created by building OpenCV from source in a Heroku one-off shell running in an 
-app that has the Python buildpack installed.  This is set up by running:
+OpenCV 3 with extra modules for Heroku Rails apps
 
 ```
-heroku create --buildpack https://github.com/computationaltextiles/ct-buildpack-python-opencv.git
-heroku config:set AWS_ACCESS_KEY_ID=<key>
-heroku config:set AWS_SECRET_ACCESS_KEY=<secret>
+# 1. Install Numpy via Conda
+heroku buildpacks:add --index 2 https://github.com/kennethreitz/conda-buildpack
+echo "numpy=1.11.2" > "conda-requirements.txt"
 git push heroku master
+
+# 2. Start a one-off dyno with a shell prompt
 heroku run bash
-```
 
-Then the build is performed (TODO: make this a script).
-Then the opencv directory, plus the files it
-adds to the Python directory, is tarred up and
-uploaded to S3.  The following commands are what I used:
+# 3. Download and install CMake
+wget https://cmake.org/files/v3.7/cmake-3.7.1-Linux-x86_64.tar.gz
+tar zxf cmake-3.7.1-Linux-x86_64.tar.gz && rm cmake-3.7.1-Linux-x86_64.tar.gz
+mkdir -p .heroku/cmake
+mv cmake-3.7.1-Linux-x86_64/bin .heroku/cmake
+mv cmake-3.7.1-Linux-x86_64/share .heroku/cmake
 
-```
-pip install numpy
-wget https://github.com/Itseez/opencv/archive/2.4.11.zip
-unzip 2.4.11.zip && rm 2.4.11.zip
-wget https://cmake.org/files/v3.5/cmake-3.5.0-rc1-Linux-x86_64.tar.gz
-tar zxf cmake-3.5.0-rc1-Linux-x86_64.tar.gz && rm cmake-3.5.0-rc1-Linux-x86_64.tar.gz
-mkdir .heroku/cmake
-mv cmake-3.5.0-rc1-Linux-x86_64/bin .heroku/cmake
-mv cmake-3.5.0-rc1-Linux-x86_64/share .heroku/cmake
-cd opencv-2.4.11/
-../.heroku/cmake/bin/cmake -DCMAKE_INSTALL_PREFIX=/app/.heroku/opencv .
-make
-make install
+# 4. Download and install OpenCV 3 with extra modules (CMake for some reason couldn't find the PYTHON2_INCLUDE_DIR and PYTHON2_LIBRARY dirs)
+wget https://github.com/opencv/opencv/archive/3.2.0.zip
+unzip 3.2.0.zip && rm 3.2.0.zip
+wget https://github.com/opencv/opencv_contrib/archive/3.2.0.zip
+unzip 3.2.0.zip && rm 3.2.0.zip
+cd opencv-3.2.0
+../.heroku/cmake/bin/cmake -DPYTHON2_INCLUDE_DIR=/app/.heroku/miniconda/include/python2.7 -DPYTHON2_LIBRARY=/usr/lib/x86_64-linux-gnu/libpython2.7.so -DCMAKE_BUILD_TYPE=Release -DOPENCV_EXTRA_MODULES_PATH=/app/opencv_contrib-3.2.0/modules -DCMAKE_INSTALL_PREFIX=/app/.heroku/opencv .
+make && make install
+
+# 5. Compress binaries and manually upload it to your S3 bucket via transfer.sh (don't forget to make the file public)
 cd ..
-tar zcf opencv.env.tgz .heroku/opencv .heroku/cmake .heroku/python/lib/python2.7/site-packages/numpy .heroku/python/lib/python2.7/site-packages/cv*
-aws s3 cp opencv.env.tgz s3://test5a9c0284/runtimes/opencv.env.tgz
+tar zcf opencv-with-contrib.env.tgz .heroku/opencv .heroku/cmake
+curl --upload-file opencv-with-contrib.env.tgz https://transfer.sh/opencv-with-contrib.env.tgz
+
+# 6. Add buildpack, the URL to the binaries and deploy
+heroku buildpacks:add --index 2 https://github.com/razola/buildpack-opencv
+heroku config:set OPEN_CV_S3_URL=http://s3.amazonaws.com/something1234/opencv-with-contrib.env.tgz
+git push heroku master
 ```
 
-Then I set that file to be public via the S3 console, since the buildpack just downloads it without
-any credentials.
+Note that before "import cv2" you'll need to do:
 
-For now this is a bare-bones OpenCV 3.1.0 build that is just whatever it was able to compile without
-downloading any dependencies.  
-
-## TODO
-
-I would also like to be able to install this buildpack after the standard Python buildpack, so that 
-the OpenCV Python modules are installed for use in Python code.  I believe this will require working
-out what OpenCV installs into the Python directories and including that in the package.
-
-The image should be stored in a project-owned S3 bucket and downloaded using appropriate credentials
-rather than an anonymous download.
+```
+import sys
+sys.path.append("/app/.heroku/opencv/lib/python2.7/site-packages")
+import cv2
+```

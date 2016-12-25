@@ -69,8 +69,11 @@ export PATH="$BUILD_DIR/.heroku/opencv/bin:$PATH"
 mkdir -p $CACHE_DIR
 title "Generating build environment"
 if [ ! -f $CACHE_DIR/env.tar.gz ]; then
-	subtitle "Fetching..."
-	wget -nv http://s3.amazonaws.com/test5a9c0284/runtimes/opencv.env.tgz -O $CACHE_DIR/opencv.env.tgz
+  subtitle "Fetching..."
+  # Config variables are saved as files in $ENV_DIR
+  # https://devcenter.heroku.com/articles/buildpack-api
+  S3_URL=$(cat $ENV_DIR/OPEN_CV_S3_URL)
+  wget -nv $S3_URL -O $CACHE_DIR/opencv.env.tgz
 fi
 subtitle "Unpacking..."
 tar zxf $CACHE_DIR/opencv.env.tgz -C $BUILD_DIR
