@@ -33,7 +33,7 @@ tar zcf opencv-with-contrib.env.tgz .heroku/opencv .heroku/cmake
 curl --upload-file opencv-with-contrib.env.tgz https://transfer.sh/opencv-with-contrib.env.tgz
 
 # 6. Add buildpack, the URL to the binaries and deploy
-heroku buildpacks:add --index 2 https://github.com/razola/buildpack-opencv
+heroku buildpacks:add --index 3 https://github.com/razola/buildpack-opencv
 heroku config:set OPEN_CV_S3_URL=http://s3.amazonaws.com/something1234/opencv-with-contrib.env.tgz
 git push heroku master
 ```
